@@ -7,7 +7,7 @@ from aiogram.filters import Command
 import schedule
 import time
 
-TOKEN = "ТВОЙ_ТОКЕН_ТУТ"  # Встав сюди свій токен
+TOKEN = "redboom_bot"  # Встав сюди свій токен
 bot = Bot(token=TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher()
 
