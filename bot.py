@@ -3,7 +3,6 @@ import asyncio
 import logging
 import os
 from aiogram import Bot, Dispatcher, types
-from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from aiogram.utils import executor
 from dotenv import load_dotenv
 import schedule
@@ -19,7 +18,9 @@ if not TOKEN:
 # Ініціалізація бота і диспетчера
 bot = Bot(token=TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot)
-dp.middleware.setup(LoggingMiddleware())
+
+# Налаштування логування
+logging.basicConfig(level=logging.INFO)
 
 # Список для зберігання ID користувачів
 user_ids = set()
@@ -40,9 +41,9 @@ async def send_random_message():
         message = random.choice(greetings)  # Вибір випадкової фрази
         try:
             await bot.send_message(user_id, message)  # Надсилання повідомлення
-            print(f"Повідомлення надіслано користувачу з ID: {user_id}")
+            logging.info(f"Повідомлення надіслано користувачу з ID: {user_id}")
         except Exception as e:
-            print(f"Не вдалося надіслати повідомлення користувачу з ID {user_id}: {e}")
+            logging.error(f"Не вдалося надіслати повідомлення користувачу з ID {user_id}: {e}")
 
 # Обробник команди /start
 @dp.message_handler(commands=["start"])
