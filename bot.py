@@ -3,7 +3,6 @@ import asyncio
 import logging
 import os
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ParseMode
 from aiogram.contrib.middlewares.logging import LoggingMiddleware
 from aiogram.utils import executor
 from dotenv import load_dotenv
@@ -18,7 +17,7 @@ if not TOKEN:
     raise ValueError("❌ Токен не знайдено! Перевірте файл .env.")
 
 # Ініціалізація бота і диспетчера
-bot = Bot(token=TOKEN, parse_mode=ParseMode.HTML)
+bot = Bot(token=TOKEN, parse_mode="HTML")
 dp = Dispatcher(bot)
 dp.middleware.setup(LoggingMiddleware())
 
