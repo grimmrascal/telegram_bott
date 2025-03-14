@@ -2,7 +2,7 @@ import asyncio
 import logging
 import random
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ParseMode
+from aiogram.enums import ParseMode
 from aiogram.filters import Command
 import schedule
 import time
