@@ -3,7 +3,9 @@ import asyncio
 import logging
 import os
 from aiogram import Bot, Dispatcher, types
-from aiogram.utils import executor
+from aiogram.types import ParseMode
+from aiogram.fsm.context import FSMContext
+from aiogram.filters import Command
 from dotenv import load_dotenv
 import schedule
 import time
@@ -16,8 +18,8 @@ if not TOKEN:
     raise ValueError("❌ Токен не знайдено! Перевірте файл .env.")
 
 # Ініціалізація бота і диспетчера
-bot = Bot(token=TOKEN, parse_mode="HTML")
-dp = Dispatcher(bot)
+bot = Bot(token=TOKEN, parse_mode=ParseMode.HTML)
+dp = Dispatcher()
 
 # Налаштування логування
 logging.basicConfig(level=logging.INFO)
@@ -46,7 +48,7 @@ async def send_random_message():
             logging.error(f"Не вдалося надіслати повідомлення користувачу з ID {user_id}: {e}")
 
 # Обробник команди /start
-@dp.message_handler(commands=["start"])
+@dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id  # Отримуємо ID користувача
     if user_id not in user_ids:
@@ -68,7 +70,13 @@ async def scheduler():
         schedule.run_pending()
         await asyncio.sleep(1)
 
+# Запуск бота
+async def main():
+    # Запускаємо планувальник
+    await scheduler()
+
+    # Запуск обробника повідомлень
+    await dp.start_polling(bot)
+
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.create_task(scheduler())  # Запускаємо планувальник
-    executor.start_polling(dp, skip_updates=True)
+    asyncio.run(main())
