@@ -1,19 +1,15 @@
-import random
-import asyncio
-import logging
 import os
+import asyncio
+import random
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import ParseMode
-from aiogram.fsm.context import FSMContext
-from aiogram.filters import Command
+from aiogram.enums import ParseMode
+from aiogram.filters import CommandStart
+from aiogram.types import Message
 from dotenv import load_dotenv
-import schedule
-import time
 
-# Завантажуємо змінні з файлу .env
+# Завантаження змінних середовища
 load_dotenv()
-
-TOKEN = os.getenv("TOKEN")
+TOKEN = os.getenv("BOT_TOKEN")
 if not TOKEN:
     raise ValueError("❌ Токен не знайдено! Перевірте файл .env.")
 
@@ -21,62 +17,41 @@ if not TOKEN:
 bot = Bot(token=TOKEN, parse_mode=ParseMode.HTML)
 dp = Dispatcher()
 
-# Налаштування логування
-logging.basicConfig(level=logging.INFO)
+# Список користувачів, які почали роботу з ботом
+active_users = set()
 
-# Список для зберігання ID користувачів
-user_ids = set()
-
-# Список приємних фраз
-greetings = [
-    "Привіт! Сподіваюсь, у тебе гарний день!",
-    "Як твої справи? Сподіваюся, все чудово!",
-    "Бажаю гарного настрою! :)",
-    "Привіт, друже! Як ти?",
-    "Вітаю! Спільно до успіху!"
+# Приємні фрази для розсилки
+phrases = [
+    "🌟 Бажаю тобі чудового дня!",
+    "😊 Не забувай усміхатися!",
+    "💪 Вір у себе – ти можеш усе!",
+    "🌞 Гарного настрою на весь день!",
+    "🌺 Ти неймовірний/на, не забувай про це!"
 ]
 
-# Функція для розсилки повідомлень
-async def send_random_message():
-    if user_ids:  # Якщо є користувачі
-        user_id = random.choice(list(user_ids))  # Вибір випадкового ID
-        message = random.choice(greetings)  # Вибір випадкової фрази
-        try:
-            await bot.send_message(user_id, message)  # Надсилання повідомлення
-            logging.info(f"Повідомлення надіслано користувачу з ID: {user_id}")
-        except Exception as e:
-            logging.error(f"Не вдалося надіслати повідомлення користувачу з ID {user_id}: {e}")
-
 # Обробник команди /start
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-    user_id = message.from_user.id  # Отримуємо ID користувача
-    if user_id not in user_ids:
-        user_ids.add(user_id)  # Додаємо ID в список
-        await message.answer("Привіт! Тепер ти можеш отримувати випадкові повідомлення від мене!")
-    else:
-        await message.answer("Ти вже зареєстрований для отримання повідомлень.")
+@dp.message(CommandStart())
+async def send_welcome(message: Message):
+    user_id = message.from_user.id
+    active_users.add(user_id)
+    await message.answer("Привіт! Я твій бот, що піднімає настрій! 🎉")
 
-# Завдання для відправки повідомлень кожні 5 хвилин
-def job():
-    asyncio.run(send_random_message())
-
-# Запускаємо розсилку кожні 5 хвилин
-schedule.every(5).minutes.do(job)
-
-# Функція для запуску планувальника
-async def scheduler():
+# Функція для розсилки повідомлень кожні 6 годин
+async def send_random_messages():
     while True:
-        schedule.run_pending()
-        await asyncio.sleep(1)
+        if active_users:
+            phrase = random.choice(phrases)
+            for user_id in active_users:
+                try:
+                    await bot.send_message(user_id, phrase)
+                except Exception as e:
+                    print(f"❌ Помилка при відправці повідомлення {user_id}: {e}")
+        await asyncio.sleep(21600)  # 6 годин (6 * 60 * 60 секунд)
 
 # Запуск бота
 async def main():
-    # Запускаємо планувальник
-    await scheduler()
-
-    # Запуск обробника повідомлень
+    asyncio.create_task(send_random_messages())  # Запускаємо фонову розсилку
     await dp.start_polling(bot)
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     asyncio.run(main())
