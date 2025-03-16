@@ -3,3 +3,4 @@ asyncio
 schedule
 python-dotenv
 apscheduler
+pytz
