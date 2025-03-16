@@ -34,18 +34,19 @@ async def start_handler(message: types.Message):
     active_users.add(user_id)
     await message.answer(f"Привіт, {message.from_user.first_name}! Я твій Telegram бот.")
 
-# Функція для розсилки випадкових приємних повідомлень
-async def send_random_messages():
+# Обробник команди /sendnow
+@dp.message(commands=["sendnow"])
+async def send_now_handler(message: types.Message):
+    # Надсилаємо повідомлення всім користувачам
     messages = [
         "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!"
     ]
-    while True:
-        for user_id in list(active_users):
-            try:
-                await bot.send_message(user_id, random.choice(messages))
-            except Exception as e:
-                logging.warning(f"Не вдалося надіслати повідомлення {user_id}: {e}")
-        await asyncio.sleep(3600)  # Відправляти кожну годину
+    for user_id in active_users:
+        try:
+            await bot.send_message(user_id, random.choice(messages))
+        except Exception as e:
+            logging.warning(f"Не вдалося надіслати повідомлення {user_id}: {e}")
+    await message.answer("Повідомлення надіслано всім активним користувачам!")
 
 # Функція для відправки повідомлення о 10 ранку кожного дня
 async def send_daily_message():
@@ -78,4 +79,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
