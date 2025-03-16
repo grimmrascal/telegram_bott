@@ -11,7 +11,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 # Завантаження змінних середовища
-load_dotenv(dotenv_path='C:/Users/grImm/Desktop/telegram_bott/.env')
+load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 
 if not TOKEN:
