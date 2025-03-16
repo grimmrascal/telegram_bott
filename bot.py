@@ -1,22 +1,21 @@
-import os
-import logging
 import asyncio
+import logging
 import random
-from dotenv import load_dotenv
+import os
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from pytz import timezone
 
-# Завантажуємо змінні середовища
-load_dotenv()
+from dotenv import load_dotenv
 
-# Отримуємо токен бота з змінних середовища
+# Завантаження змінних середовища
+load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 
 if not TOKEN:
-    raise ValueError("❌ Токен не знайдено! Перевірте файл .env або налаштуйте змінні середовища на Railway.")
+    raise ValueError("❌ Токен не знайдено! Перевірте файл .env.")
 
 # Налаштування логування
 logging.basicConfig(level=logging.INFO)
@@ -28,52 +27,43 @@ dp = Dispatcher()
 # Список активних користувачів
 active_users = set()
 
+# Часовий пояс Києва
+kyiv_tz = timezone("Europe/Kyiv")
+
 # Обробник команди /start
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     user_id = message.from_user.id
     active_users.add(user_id)
-    await message.answer(f"Привіт, {message.from_user.first_name}! Тепер ти в списку активних користувачів.")
+    await message.answer(f"Привіт, {message.from_user.first_name}! Я твій Telegram бот.")
 
-# Обробник команди /sendnow (миттєва розсилка)
+# Обробник команди /sendnow для миттєвої розсилки
 @dp.message(Command("sendnow"))
 async def send_now_handler(message: types.Message):
+    await send_random_messages()
+    await message.answer("✅ Повідомлення надіслано всім активним користувачам!")
+
+# Функція для розсилки випадкових приємних повідомлень
+async def send_random_messages():
     messages = [
         "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!"
     ]
-    for user_id in active_users:
-        try:
-            await bot.send_message(user_id, random.choice(messages))
-        except Exception as e:
-            logging.warning(f"Не вдалося надіслати повідомлення {user_id}: {e}")
-    await message.answer("✅ Повідомлення надіслано всім активним користувачам!")
-
-# Щоденна розсилка о 10:00 за Києвом
-async def send_daily_message():
-    messages = [
-        "Доброго ранку! 🌞 Ти чудовий!",
-        "Нехай цей день принесе тобі щось хороше!",
-        "Ти сильний, у тебе все вийде!",
-        "З посмішкою легше рухатися вперед! 😊"
-    ]
-    for user_id in active_users:
+    for user_id in list(active_users):
         try:
             await bot.send_message(user_id, random.choice(messages))
         except Exception as e:
             logging.warning(f"Не вдалося надіслати повідомлення {user_id}: {e}")
 
-# Функція для планування щоденних повідомлень
-async def schedule_daily_message():
-    scheduler = AsyncIOScheduler()
-    kyiv_tz = timezone("Europe/Kiev")
-    trigger = CronTrigger(hour=13, minute=15, timezone=kyiv_tz)  # 10:00 ранку за Києвом
-    scheduler.add_job(send_daily_message, trigger)
-    scheduler.start()
+# Планувальник для щоденних повідомлень
+scheduler = AsyncIOScheduler()
+
+# Запланувати розсилку о 10:00 за Києвом
+scheduler.add_job(send_random_messages, CronTrigger(hour=13, minute=20, timezone=kyiv_tz))
 
 # Основна функція запуску бота
 async def main():
-    asyncio.create_task(schedule_daily_message())  # Запускаємо планувальник
-    await dp.start_polling(bot)  # Запускаємо бота
+    scheduler.start()
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
     asyncio.run(main())
