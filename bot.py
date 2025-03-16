@@ -94,6 +94,7 @@ async def send_random_messages():
 # Планувальник для щоденних повідомлень
 scheduler = AsyncIOScheduler()
 scheduler.add_job(send_random_messages, CronTrigger(hour=10, minute=0, timezone=kyiv_tz))
+scheduler.add_job(send_random_messages, CronTrigger(hour=18, minute=0, timezone=kyiv_tz))
 
 # Основна функція запуску бота
 async def main():
