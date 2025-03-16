@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.daily import DailyTrigger
+from apscheduler.triggers.cron import CronTrigger  # Використовуємо CronTrigger замість DailyTrigger
 import random
 from aiogram.client import DefaultBotProperties
 
@@ -68,7 +68,7 @@ async def send_daily_message():
 # Функція для планування відправки повідомлень о 10 ранку кожного дня
 async def schedule_daily_message():
     scheduler = AsyncIOScheduler()
-    trigger = DailyTrigger(hour=10, minute=0)  # 10 ранку кожного дня
+    trigger = CronTrigger(hour=10, minute=0)  # 10 ранку кожного дня
     scheduler.add_job(send_daily_message, trigger)
     scheduler.start()
 
