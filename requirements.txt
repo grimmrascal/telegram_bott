@@ -4,3 +4,4 @@ schedule
 python-dotenv
 apscheduler
 pytz
+asyncpg
