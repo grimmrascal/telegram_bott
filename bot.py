@@ -51,13 +51,6 @@ async def send_random_messages():
                 logging.warning(f"Не вдалося надіслати повідомлення {user_id}: {e}")
         await asyncio.sleep(3600)  # Відправляти кожну годину
 
-# Функція для планування відправки повідомлень о 10 ранку кожного дня
-async def schedule_daily_message():
-    scheduler = AsyncIOScheduler()
-    trigger = DailyTrigger(hour=10, minute=0)  # 10 ранку кожного дня
-    scheduler.add_job(send_daily_message, trigger)
-    scheduler.start()
-
 # Функція для відправки повідомлення о 10 ранку кожного дня
 async def send_daily_message():
     messages = [
@@ -71,6 +64,13 @@ async def send_daily_message():
             await bot.send_message(user_id, random.choice(messages))
         except Exception as e:
             logging.warning(f"Не вдалося надіслати повідомлення {user_id}: {e}")
+
+# Функція для планування відправки повідомлень о 10 ранку кожного дня
+async def schedule_daily_message():
+    scheduler = AsyncIOScheduler()
+    trigger = DailyTrigger(hour=10, minute=0)  # 10 ранку кожного дня
+    scheduler.add_job(send_daily_message, trigger)
+    scheduler.start()
 
 # Основна функція запуску бота
 async def main():
