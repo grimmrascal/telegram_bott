@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 # Завантаження змінних середовища
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not TOKEN:
     raise ValueError("❌ Токен не знайдено! Перевірте файл .env.")
