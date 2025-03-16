@@ -66,7 +66,7 @@ async def send_daily_message():
 async def schedule_daily_message():
     scheduler = AsyncIOScheduler()
     kyiv_tz = timezone("Europe/Kiev")
-    trigger = CronTrigger(hour=10, minute=0, timezone=kyiv_tz)  # 10:00 ранку за Києвом
+    trigger = CronTrigger(hour=13, minute=15, timezone=kyiv_tz)  # 10:00 ранку за Києвом
     scheduler.add_job(send_daily_message, trigger)
     scheduler.start()
 
