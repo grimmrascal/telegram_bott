@@ -2,6 +2,7 @@ import asyncio
 import logging
 import random
 import os
+import asyncpg
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -14,8 +15,8 @@ load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-if not TOKEN:
-    raise ValueError("❌ Токен не знайдено! Перевірте файл .env.")
+if not TOKEN or not DATABASE_URL:
+    raise ValueError("❌ Перевірте файл .env: відсутній BOT_TOKEN або DATABASE_URL.")
 
 # Налаштування логування
 logging.basicConfig(level=logging.INFO)
@@ -24,26 +25,47 @@ logging.basicConfig(level=logging.INFO)
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# Список активних користувачів
-active_users = set()
-
 # Часовий пояс Києва
 kyiv_tz = timezone("Europe/Kyiv")
+
+# Підключення до бази даних
+async def init_db():
+    conn = await asyncpg.connect(DATABASE_URL)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            user_id BIGINT UNIQUE
+        )
+    """)
+    await conn.close()
+
+# Функція отримання користувачів із бази
+async def get_users():
+    conn = await asyncpg.connect(DATABASE_URL)
+    rows = await conn.fetch("SELECT user_id FROM users")
+    await conn.close()
+    return [row["user_id"] for row in rows]
+
+# Функція додавання користувача в базу
+async def add_user(user_id):
+    conn = await asyncpg.connect(DATABASE_URL)
+    await conn.execute("INSERT INTO users (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING", user_id)
+    await conn.close()
 
 # Обробник команди /start
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     user_id = message.from_user.id
-    active_users.add(user_id)
-    await message.answer(f"Привіт, {message.from_user.first_name}! Я твій Telegram бот.")
+    await add_user(user_id)
+    await message.answer(f"Привіт, {message.from_user.first_name}! Тепер ти в списку розсилки ✅")
 
-# Обробник команди /sendnow для миттєвої розсилки
+# Обробник команди /sendnow
 @dp.message(Command("sendnow"))
 async def send_now_handler(message: types.Message):
     await send_random_messages()
     await message.answer("✅ Повідомлення надіслано всім активним користувачам!")
 
-# Функція для розсилки випадкових приємних повідомлень
+# Функція для розсилки випадкових повідомлень
 async def send_random_messages():
     messages = [
         "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!",
@@ -62,7 +84,8 @@ async def send_random_messages():
         "Дивись на світ з оптимізмом – він відповість тобі тим самим!", "Кожна твоя дія – це крок до успіху!",
         "Розправ крила і лети до своєї мрії!"
     ]
-    for user_id in list(active_users):
+    users = await get_users()
+    for user_id in users:
         try:
             await bot.send_message(user_id, random.choice(messages))
         except Exception as e:
@@ -70,16 +93,13 @@ async def send_random_messages():
 
 # Планувальник для щоденних повідомлень
 scheduler = AsyncIOScheduler()
-
-# Запланувати розсилку о 10:00 за Києвом
 scheduler.add_job(send_random_messages, CronTrigger(hour=10, minute=0, timezone=kyiv_tz))
 
 # Основна функція запуску бота
 async def main():
-    # Запускаємо планувальник
-    scheduler.start()
-    # Починаємо опитування для бота
-    await dp.start_polling(bot)
+    await init_db()  # Ініціалізація бази
+    scheduler.start()  # Запуск планувальника
+    await dp.start_polling(bot)  # Запуск бота
 
 if __name__ == "__main__":
     asyncio.run(main())
