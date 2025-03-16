@@ -1,56 +1,84 @@
 import os
 import asyncio
+import logging
 import random
-from aiogram import Bot, Dispatcher, types
-from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart
-from aiogram.types import Message
 from dotenv import load_dotenv
+from aiogram import Bot, Dispatcher, types
+from aiogram.client.bot import DefaultBotProperties
+from aiogram.filters import CommandStart, Command
+from aiogram.utils.markdown import hbold
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.daily import DailyTrigger
 
-# Завантаження змінних середовища
-load_dotenv()
+# Виведення поточної директорії
+print("Поточна робоча директорія:", os.getcwd())
+
+# Завантаження змінних середовища з файлу .env
+load_dotenv()  # Можна використовувати без вказівки шляху, якщо .env в тій самій директорії
 TOKEN = os.getenv("BOT_TOKEN")
+
 if not TOKEN:
-    raise ValueError("❌ Токен не знайдено! Перевірте файл .env.")
+    raise ValueError("\u274C Токен не знайдено! Перевірте файл .env.")
 
-# Ініціалізація бота і диспетчера
-bot = Bot(token=TOKEN, parse_mode=ParseMode.HTML)
-dp = Dispatcher()
+# Налаштування властивостей за замовчуванням для бота
+default_properties = DefaultBotProperties(parse_mode="HTML")
 
-# Список користувачів, які почали роботу з ботом
+# Налаштування логування
+logging.basicConfig(level=logging.INFO)
+
+# Ініціалізація бота з властивостями за замовчуванням
+bot = Bot(token=TOKEN, default=default_properties)
+
+# Ініціалізація диспетчера, передаючи параметр bot через ключове значення
+dp = Dispatcher(bot=bot)
+
+# Список користувачів, які почали взаємодію з ботом
 active_users = set()
 
-# Приємні фрази для розсилки
-phrases = [
-    "🌟 Бажаю тобі чудового дня!",
-    "😊 Не забувай усміхатися!",
-    "💪 Вір у себе – ти можеш усе!",
-    "🌞 Гарного настрою на весь день!",
-    "🌺 Ти неймовірний/на, не забувай про це!"
-]
+# Ініціалізація планувальника
+scheduler = AsyncIOScheduler()
 
 # Обробник команди /start
 @dp.message(CommandStart())
-async def send_welcome(message: Message):
+async def start_handler(message: types.Message):
     user_id = message.from_user.id
     active_users.add(user_id)
-    await message.answer("Привіт! Я твій бот, що піднімає настрій! 🎉")
+    await message.answer(f"Привіт, {hbold(message.from_user.first_name)}! Я твій Telegram бот.")
 
-# Функція для розсилки повідомлень кожні 6 годин
-async def send_random_messages():
-    while True:
-        if active_users:
-            phrase = random.choice(phrases)
-            for user_id in active_users:
-                try:
-                    await bot.send_message(user_id, phrase)
-                except Exception as e:
-                    print(f"❌ Помилка при відправці повідомлення {user_id}: {e}")
-        await asyncio.sleep(21600)  # 6 годин (6 * 60 * 60 секунд)
+# Обробник команди /sendnow
+@dp.message(Command("sendnow"))
+async def send_now(message: types.Message):
+    messages = [
+        "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!"
+    ]
+    for user_id in list(active_users):
+        try:
+            await bot.send_message(user_id, random.choice(messages))
+        except Exception as e:
+            logging.warning(f"Не вдалося надіслати повідомлення {user_id}: {e}")
+    await message.answer("Повідомлення надіслано всім активним користувачам.")
 
-# Запуск бота
+# Функція для розсилки випадкових приємних повідомлень о 10 ранку
+async def send_daily_message():
+    messages = [
+        "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!"
+    ]
+    for user_id in list(active_users):
+        try:
+            await bot.send_message(user_id, random.choice(messages))
+        except Exception as e:
+            logging.warning(f"Не вдалося надіслати повідомлення {user_id}: {e}")
+
+# Планування розсилки о 10 ранку кожного дня
+scheduler.add_job(
+    send_daily_message,
+    DailyTrigger(hour=10, minute=0, second=0, timezone="Europe/Kiev"),  # Кожного дня о 10:00
+)
+
+# Основна функція запуску бота
 async def main():
-    asyncio.create_task(send_random_messages())  # Запускаємо фонову розсилку
+    logging.info("Бот запущений")
+    scheduler.start()  # Запуск планувальника
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
