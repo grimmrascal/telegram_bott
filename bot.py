@@ -58,7 +58,7 @@ async def send_random_messages():
 scheduler = AsyncIOScheduler()
 
 # Запланувати розсилку о 10:00 за Києвом
-scheduler.add_job(send_random_messages, CronTrigger(hour=10, minute=00, timezone=kyiv_tz))
+scheduler.add_job(send_random_messages, CronTrigger(hour=15, minute=08, timezone=kyiv_tz))
 
 # Основна функція запуску бота
 async def main():
