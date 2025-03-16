@@ -7,6 +7,7 @@ from aiogram.filters import CommandStart
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.daily import DailyTrigger
 import random
+from aiogram.client import DefaultBotProperties
 
 # Завантажуємо змінні середовища локально (для розробки) або використовуємо їх безпосередньо на Railway
 load_dotenv()  # автоматично шукає файл .env в кореневій директорії
@@ -20,8 +21,11 @@ if not TOKEN:
 # Налаштування логування
 logging.basicConfig(level=logging.INFO)
 
+# Створюємо властивості бота
+bot_properties = DefaultBotProperties(parse_mode="HTML")
+
 # Ініціалізація бота і диспетчера
-bot = Bot(token=TOKEN)
+bot = Bot(token=TOKEN, default=bot_properties)
 dp = Dispatcher()
 
 # Список користувачів, які почали взаємодію з ботом
