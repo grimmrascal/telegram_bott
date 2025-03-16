@@ -2,3 +2,4 @@ aiogram
 asyncio
 schedule
 python-dotenv
+apscheduler
