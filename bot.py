@@ -3,7 +3,7 @@ import logging
 import asyncio
 from dotenv import load_dotenv
 from aiogram import Bot, Dispatcher, types
-from aiogram.filters import CommandStart
+from aiogram.filters import Command
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger  # Використовуємо CronTrigger замість DailyTrigger
 import random
@@ -28,14 +28,14 @@ dp = Dispatcher()
 active_users = set()
 
 # Обробник команди /start
-@dp.message(CommandStart())
+@dp.message(Command("start"))
 async def start_handler(message: types.Message):
     user_id = message.from_user.id
     active_users.add(user_id)
     await message.answer(f"Привіт, {message.from_user.first_name}! Я твій Telegram бот.")
 
 # Обробник команди /sendnow
-@dp.message(commands=["sendnow"])
+@dp.message(Command("sendnow"))
 async def send_now_handler(message: types.Message):
     # Надсилаємо повідомлення всім користувачам
     messages = [
