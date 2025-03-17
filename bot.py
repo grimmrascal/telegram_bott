@@ -54,9 +54,9 @@ async def get_users():
         rows = await conn.fetch("SELECT user_id FROM users")
         return [row["user_id"] for row in rows]
 
-# Отримання випадкового фото з Pixabay
-async def get_random_photo():
-    url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q=random&image_type=photo&per_page=50"
+# Отримання випадкового фото з Pixabay за заданою темою
+async def get_random_photo(topic="cute"):
+    url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={topic}&image_type=photo&per_page=50"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
             data = await response.json()
@@ -70,10 +70,10 @@ messages = [
 ]
 
 # Відправка запланованих повідомлень
-async def send_random_messages():
+async def send_random_messages(topic="cute"):
     users = await get_users()
     text = random.choice(messages)
-    photo_url = await get_random_photo()
+    photo_url = await get_random_photo(topic)
     
     for user_id in users:
         try:
@@ -93,7 +93,19 @@ async def start(message: types.Message):
 # Команда для миттєвої розсилки
 @dp.message(Command("sendnow"))
 async def sendnow(message: types.Message):
-    await send_random_messages()
+    topic = "cute"  # За замовчуванням "cute", але можна обирати інші теми
+    await send_random_messages(topic)
+
+# Команда для вибору теми
+@dp.message(Command("settheme"))
+async def set_theme(message: types.Message):
+    theme = message.text.split(" ", 1)[1] if len(message.text.split(" ", 1)) > 1 else ""
+    
+    if theme:
+        await message.answer(f"Тема для фото змінена на: {theme}")
+        await send_random_messages(theme)
+    else:
+        await message.answer("Будь ласка, вкажіть тему після команди. Наприклад: /settheme cute")
 
 # Запуск планувальника
 scheduler.add_job(send_random_messages, "cron", hour=9, minute=0, timezone=kyiv_tz)
