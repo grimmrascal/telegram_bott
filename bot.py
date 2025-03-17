@@ -2,72 +2,40 @@ import asyncio
 import logging
 import random
 import os
-from aiogram import Bot, Dispatcher, types
-from aiogram.filters import Command
-from aiogram.types import FSInputFile
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from pytz import timezone
 import aiohttp
 import asyncpg
+from aiogram import Bot, Dispatcher, types
+from aiogram.filters import Command
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+from pytz import timezone
 from dotenv import load_dotenv
 
+# Завантаження змінних середовища з файлу .env
 load_dotenv()
-
-# Налаштування
 TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY")
 
+if not TOKEN or not DATABASE_URL or not PIXABAY_API_KEY:
+    raise ValueError("❌ Перевірте, чи встановлено BOT_TOKEN, DATABASE_URL та PIXABAY_API_KEY у файлі .env.")
+
+# Налаштування логування
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+
+# Ініціалізація бота та диспетчера
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
 
-# Часовий пояс
-kyiv_tz = timezone("Europe/Kyiv")
+# Встановлення часової зони (наприклад, Europe/Zaporozhye або Europe/Kyiv, якщо підтримується)
+tz = timezone("Europe/Zaporozhye")
 
-# Підключення до бази даних
-async def init_db():
-    global pool
-    pool = await asyncpg.create_pool(DATABASE_URL)
+# Список тематичних ключових слів для фото
+TOPICS = ["cute", "animals", "nature", "flowers", "sunset", "beach", "mountains"]
 
-async def close_db():
-    await pool.close()
-
-# Ініціалізація БД
-async def setup_db():
-    async with pool.acquire() as conn:
-        await conn.execute(
-            """CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                user_id BIGINT UNIQUE
-            )"""
-        )
-
-# Додавання користувача
-async def add_user(user_id):
-    async with pool.acquire() as conn:
-        await conn.execute("INSERT INTO users (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
-
-# Отримання списку користувачів
-async def get_users():
-    async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT user_id FROM users")
-        return [row["user_id"] for row in rows]
-        
-TOPICS = ["cute", "animals", "nature", "flowers", "sunset"]
-# Отримання випадкового фото з Pixabay за заданою темою
-async def get_random_photo():
-    topic = random.choice(TOPICS)
-    url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={topic}&image_type=photo&per_page=50"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            data = await response.json()
-            if "hits" in data and data["hits"]:
-                return random.choice(data["hits"])["webformatURL"]
-            return None
-
-# Випадкові повідомлення
-messages = [
+# Список рандомних повідомлень
+MESSAGES = [
         "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!", "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!",
         "Новий день – нові можливості! Лови їх!", "Ти сильніший, ніж думаєш. Усе вийде!",
         "Сьогодні твій день – зроби його крутим!", "Прокидайся! У світу для тебе є щось особливе!",
@@ -133,11 +101,48 @@ messages = [
         "Твоя рішучість вражає!", "Ти надихаєш інших своєю силою волі!"
 ]
 
-# Відправка запланованих повідомлень
-async def send_random_messages(topic="cute"):
+# Глобальний пул з'єднань з PostgreSQL
+pool = None
+
+# Функція ініціалізації бази даних та створення таблиці користувачів
+async def init_db():
+    global pool
+    pool = await asyncpg.create_pool(DATABASE_URL)
+    async with pool.acquire() as conn:
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                user_id BIGINT PRIMARY KEY
+            )
+        """)
+
+# Додавання користувача в базу
+async def add_user(user_id: int):
+    async with pool.acquire() as conn:
+        await conn.execute("INSERT INTO users (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
+
+# Отримання списку користувачів з бази
+async def get_users():
+    async with pool.acquire() as conn:
+        rows = await conn.fetch("SELECT user_id FROM users")
+        return [row["user_id"] for row in rows]
+
+# Отримання випадкового фото з Pixabay за темою (тема обирається випадково з TOPICS)
+async def get_random_photo():
+    topic = random.choice(TOPICS)
+    url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={topic}&image_type=photo&per_page=50"
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url) as response:
+            if response.status == 200:
+                data = await response.json()
+                if data.get("hits"):
+                    return random.choice(data["hits"])["webformatURL"]
+            return None
+
+# Функція надсилання випадкового фото та текстового повідомлення всім користувачам
+async def send_random_content():
     users = await get_users()
-    text = random.choice(messages)
-    photo_url = await get_random_photo(topic)
+    text = random.choice(MESSAGES)
+    photo_url = await get_random_photo()
     
     for user_id in users:
         try:
@@ -146,42 +151,30 @@ async def send_random_messages(topic="cute"):
             else:
                 await bot.send_message(chat_id=user_id, text=text)
         except Exception as e:
-            logging.error(f"Помилка надсилання {user_id}: {e}")
+            logging.error(f"Помилка надсилання для {user_id}: {e}")
 
-# Команда старт
+# Обробник команди /start для реєстрації користувача
 @dp.message(Command("start"))
-async def start(message: types.Message):
-    await add_user(message.from_user.id)
-    await message.answer("Ви підписалися на розсилку!")
+async def start_handler(message: types.Message):
+    user_id = message.from_user.id
+    await add_user(user_id)
+    await message.answer("Ви підписалися на розсилку фото та повідомлень!")
 
-# Команда для миттєвої розсилки
+# Обробник команди /sendnow для миттєвої розсилки
 @dp.message(Command("sendnow"))
-async def sendnow(message: types.Message):
-    topic = "cute"  # За замовчуванням "cute", але можна обирати інші теми
-    await send_random_messages(topic)
+async def sendnow_handler(message: types.Message):
+    await send_random_content()
 
-# Команда для вибору теми
-@dp.message(Command("settheme"))
-async def set_theme(message: types.Message):
-    theme = message.text.split(" ", 1)[1] if len(message.text.split(" ", 1)) > 1 else ""
-    
-    if theme:
-        await message.answer(f"Тема для фото змінена на: {theme}")
-        await send_random_messages(theme)
-    else:
-        await message.answer("Будь ласка, вкажіть тему після команди. Наприклад: /settheme cute")
+# Запуск планувальника для розсилки контенту (наприклад, о 10:00, 14:00 та 18:00)
+scheduler.add_job(send_random_content, CronTrigger(hour=10, minute=0, timezone=tz))
+scheduler.add_job(send_random_content, CronTrigger(hour=14, minute=0, timezone=tz))
+scheduler.add_job(send_random_content, CronTrigger(hour=18, minute=0, timezone=tz))
 
-# Запуск планувальника
-scheduler.add_job(send_random_messages, "cron", hour=9, minute=0, timezone=kyiv_tz)
-scheduler.add_job(send_random_messages, "cron", hour=12, minute=0, timezone=kyiv_tz)
-scheduler.add_job(send_random_messages, "cron", hour=18, minute=0, timezone=kyiv_tz)
-
+# Основна функція запуску бота
 async def main():
     await init_db()
-    await setup_db()
     scheduler.start()
     await dp.start_polling(bot)
-    await close_db()
 
 if __name__ == "__main__":
     asyncio.run(main())
