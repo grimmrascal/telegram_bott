@@ -94,7 +94,6 @@ async def start(message: types.Message):
 @dp.message(Command("sendnow"))
 async def sendnow(message: types.Message):
     await send_random_messages()
-    await message.answer("Повідомлення відправлено!")
 
 # Запуск планувальника
 scheduler.add_job(send_random_messages, "cron", hour=9, minute=0, timezone=kyiv_tz)
