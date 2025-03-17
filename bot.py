@@ -53,9 +53,10 @@ async def get_users():
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT user_id FROM users")
         return [row["user_id"] for row in rows]
-
+        
+TOPICS = ["cute", "animals", "nature", "flowers", "sunset"]
 # Отримання випадкового фото з Pixabay за заданою темою
-async def get_random_photo(topic="cute"):
+async def get_random_photo():
     url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={topic}&image_type=photo&per_page=50"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
