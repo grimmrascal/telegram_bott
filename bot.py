@@ -57,11 +57,12 @@ async def get_users():
 TOPICS = ["cute", "animals", "nature", "flowers", "sunset"]
 # Отримання випадкового фото з Pixabay за заданою темою
 async def get_random_photo():
+    topic = random.choice(TOPICS)
     url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={topic}&image_type=photo&per_page=50"
     async with aiohttp.ClientSession() as session:
         async with session.get(url) as response:
             data = await response.json()
-            if "hits" in data and len(data["hits"]) > 0:
+            if "hits" in data and data["hits"]:
                 return random.choice(data["hits"])["webformatURL"]
             return None
 
