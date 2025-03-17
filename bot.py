@@ -62,14 +62,14 @@ async def get_all_users():
 async def start_handler(message: types.Message):
     user_id = message.from_user.id
     await add_user(user_id)
-    await message.answer(f"Привіт, {message.from_user.first_name}! Ти доданий у список розсилки.")
+    await message.answer(f"Привіт, {message.from_user.first_name}! Ти додана у список розсилки.")
     logging.info(f"✅ Користувач {user_id} доданий у базу.")
 
 # Обробник команди /sendnow для миттєвої розсилки
 @dp.message(Command("sendnow"))
 async def send_now_handler(message: types.Message):
     await send_random_messages()
-    await message.answer("✅ Повідомлення надіслано всім активним користувачам!")
+    # await message.answer("✅ Повідомлення надіслано всім активним користувачам!")
 
 # Функція для розсилки випадкових приємних повідомлень
 async def send_random_messages():
