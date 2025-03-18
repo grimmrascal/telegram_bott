@@ -11,14 +11,14 @@ from apscheduler.triggers.cron import CronTrigger
 from pytz import timezone
 from dotenv import load_dotenv
 
-# Завантаження змінних середовища з файлу .env
+# Завантаження змінних середовища
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY")
 
 if not TOKEN or not DATABASE_URL or not PIXABAY_API_KEY:
-    raise ValueError("❌ Перевірте, чи встановлено BOT_TOKEN, DATABASE_URL та PIXABAY_API_KEY у файлі .env.")
+    raise ValueError("❌ BOT_TOKEN, DATABASE_URL або PIXABAY_API_KEY не знайдено у .env")
 
 # Налаштування логування
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -28,13 +28,13 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
 
-# Встановлення часової зони (наприклад, Europe/Zaporozhye або Europe/Kyiv, якщо підтримується)
+# Часова зона (наприклад, Europe/Zaporozhye)
 tz = timezone("Europe/Zaporozhye")
 
-# Список тематичних ключових слів для фото
+# Тематичні ключові слова для фото
 TOPICS = ["cute", "animals", "nature", "flowers", "sunset", "beach", "mountains"]
 
-# Список рандомних повідомлень
+# Список унікальних повідомлень
 MESSAGES = [
         "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!", "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!",
         "Новий день – нові можливості! Лови їх!", "Ти сильніший, ніж думаєш. Усе вийде!",
@@ -104,7 +104,7 @@ MESSAGES = [
 # Глобальний пул з'єднань з PostgreSQL
 pool = None
 
-# Функція ініціалізації бази даних та створення таблиці користувачів
+# Ініціалізація бази даних
 async def init_db():
     global pool
     pool = await asyncpg.create_pool(DATABASE_URL)
@@ -120,13 +120,13 @@ async def add_user(user_id: int):
     async with pool.acquire() as conn:
         await conn.execute("INSERT INTO users (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
 
-# Отримання списку користувачів з бази
+# Отримання списку користувачів
 async def get_users():
     async with pool.acquire() as conn:
         rows = await conn.fetch("SELECT user_id FROM users")
         return [row["user_id"] for row in rows]
 
-# Отримання випадкового фото з Pixabay за темою (тема обирається випадково з TOPICS)
+# Отримання випадкового фото за темою
 async def get_random_photo():
     topic = random.choice(TOPICS)
     url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={topic}&image_type=photo&per_page=50"
@@ -138,13 +138,20 @@ async def get_random_photo():
                     return random.choice(data["hits"])["webformatURL"]
             return None
 
-# Функція надсилання випадкового фото та текстового повідомлення всім користувачам
-async def send_random_content():
+# Надсилання унікальних повідомлень кожному користувачу
+async def send_unique_messages():
     users = await get_users()
-    text = random.choice(MESSAGES)
-    photo_url = await get_random_photo()
-    
+    random.shuffle(MESSAGES)  # Перемішуємо список повідомлень
+    messages_pool = MESSAGES[:]  # Створюємо копію для унікальності
+
     for user_id in users:
+        if not messages_pool:  # Якщо повідомлення закінчилися, перемішуємо знову
+            messages_pool = MESSAGES[:]
+            random.shuffle(messages_pool)
+
+        text = messages_pool.pop()  # Беремо унікальне повідомлення
+        photo_url = await get_random_photo()  # Отримуємо унікальне фото
+
         try:
             if photo_url:
                 await bot.send_photo(chat_id=user_id, photo=photo_url, caption=text)
@@ -153,22 +160,22 @@ async def send_random_content():
         except Exception as e:
             logging.error(f"Помилка надсилання для {user_id}: {e}")
 
-# Обробник команди /start для реєстрації користувача
+# Обробник команди /start
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     user_id = message.from_user.id
     await add_user(user_id)
-    await message.answer("Ви підписалися на розсилку фото та повідомлень!")
+    await message.answer("Ви підписалися на розсилку унікальних фото та повідомлень!")
 
 # Обробник команди /sendnow для миттєвої розсилки
 @dp.message(Command("sendnow"))
 async def sendnow_handler(message: types.Message):
-    await send_random_content()
+    await send_unique_messages()
 
-# Запуск планувальника для розсилки контенту (наприклад, о 10:00, 14:00 та 18:00)
-scheduler.add_job(send_random_content, CronTrigger(hour=18, minute=0, timezone=tz))
+# Запуск планувальника (18:00)
+scheduler.add_job(send_unique_messages, CronTrigger(hour=18, minute=0, timezone=tz))
 
-# Основна функція запуску бота
+# Основна функція
 async def main():
     await init_db()
     scheduler.start()
