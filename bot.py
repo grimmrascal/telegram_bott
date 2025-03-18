@@ -32,7 +32,7 @@ scheduler = AsyncIOScheduler()
 tz = timezone("Europe/Zaporozhye")
 
 # Тематичні ключові слова для фото
-TOPICS = ["cute", "animals", "nature", "flowers", "sunset", "beach", "mountains"]
+TOPICS = ["cute", "kids", "nature", "flowers", "sunset", "mountains"]
 
 # Список унікальних повідомлень
 MESSAGES = [
