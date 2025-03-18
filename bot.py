@@ -93,7 +93,7 @@ def get_all_users():
     return cursor.fetchall()
 
 # Функція для отримання випадкового зображення за темою
-def get_random_image(query="funny, kids, sunset, motivation"):
+def get_random_image(query="funny, kids, sunset, motivation, mountains, forests, cute"):
     url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={query}&image_type=photo&per_page=50"
     response = requests.get(url)
     if response.status_code == 200:
