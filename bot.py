@@ -239,6 +239,48 @@ async def send_random_messages():
         except Exception as e:
             logging.warning(f"⚠️ Не вдалося надіслати {user_id}: {e}")
 
+# Обробник команди /t для розсилки повідомлення всім користувачам
+@dp.message(Command("t"))
+async def broadcast_handler(message: types.Message):
+    if message.from_user.id == ADMIN_USER_ID:  # Перевіряємо, чи це адміністратор
+        try:
+            # Отримуємо текст повідомлення або підпис до фото
+            if message.caption:  # Якщо є підпис до фото
+                # Видаляємо команду з підпису
+                broadcast_message = " ".join(message.caption.split()[1:])
+            elif message.text:  # Якщо є текст після команди
+                # Видаляємо команду з тексту
+                broadcast_message = " ".join(message.text.split()[1:])
+            else:  # Якщо немає тексту або підпису
+                broadcast_message = None
+
+            users = get_all_users()  # Отримуємо список усіх користувачів
+
+            if not users:
+                await message.answer("❌ Немає користувачів для розсилки.")
+                return
+
+            # Розсилаємо повідомлення кожному користувачу, крім адміністратора
+            for user_id, username, first_name in users:
+                if user_id == ADMIN_USER_ID:  # Пропускаємо адміністратора
+                    continue
+                try:
+                    if message.photo:  # Якщо є фото
+                        await bot.send_photo(user_id, photo=message.photo[-1].file_id, caption=broadcast_message)
+                    elif broadcast_message:  # Якщо тільки текст
+                        await bot.send_message(user_id, broadcast_message)
+                    logging.info(f"📨 Повідомлення надіслано користувачу {user_id}")
+                except Exception as e:
+                    logging.warning(f"⚠️ Не вдалося надіслати повідомлення користувачу {user_id}: {e}")
+
+            await message.answer("✅ Повідомлення успішно розіслано всім користувачам, крім адміністратора!")
+        except IndexError:
+            await message.answer("❌ Неправильний формат. Використовуйте: /t <текст повідомлення> або прикріпіть фото з підписом.")
+        except Exception as e:
+            await message.answer(f"❌ Помилка при розсилці: {e}")
+    else:
+        await message.answer("❌ У вас немає прав для виконання цієї команди.")
+
 # Обробник натискань на кнопки
 @dp.callback_query()
 async def handle_reaction(callback_query: types.CallbackQuery):
