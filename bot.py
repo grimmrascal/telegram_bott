@@ -2,10 +2,11 @@ import asyncio
 import logging
 import random
 import os
-import aiohttp
-import asyncpg
+import sqlite3
+import requests
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from pytz import timezone
@@ -14,28 +15,123 @@ from dotenv import load_dotenv
 # Завантаження змінних середовища
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
-DATABASE_URL = os.getenv("DATABASE_URL")
 PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY")
 
-if not TOKEN or not DATABASE_URL or not PIXABAY_API_KEY:
-    raise ValueError("❌ BOT_TOKEN, DATABASE_URL або PIXABAY_API_KEY не знайдено у .env")
+if not TOKEN:
+    raise ValueError("❌ Токен не знайдено! Перевірте файл .env.")
+if not PIXABAY_API_KEY:
+    raise ValueError("❌ API-ключ Pixabay не знайдено! Перевірте файл .env.")
 
 # Налаштування логування
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
-# Ініціалізація бота та диспетчера
+# Ініціалізація бота і диспетчера
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
-scheduler = AsyncIOScheduler()
 
-# Часова зона (наприклад, Europe/Zaporozhye)
-tz = timezone("Europe/Zaporozhye")
+# Часовий пояс Києва
+kyiv_tz = timezone("Europe/Kyiv")
 
-# Тематичні ключові слова для фото
-TOPICS = ["cute", "kids", "nature", "flowers", "sunset", "mountains"]
+# Ваш Telegram user_id для отримання повідомлень від бота
+ADMIN_USER_ID = 471637263  # Замініть на ваш реальний user_id
 
-# Список унікальних повідомлень
-MESSAGES = [
+# Підключення до бази даних
+conn = sqlite3.connect('users.db')
+cursor = conn.cursor()
+
+# Створення таблиці користувачів
+cursor.execute('''CREATE TABLE IF NOT EXISTS users (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER UNIQUE,
+                    username TEXT,
+                    first_name TEXT
+                )''')
+conn.commit()
+
+# Функція для створення клавіатури з кнопками
+def create_reaction_keyboard():
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="❤️", callback_data="reaction:like"),
+            InlineKeyboardButton(text="🔄", callback_data="reaction:new_photo"),
+        ]
+    ])
+    return keyboard
+
+# Функція для додавання користувача до бази даних
+def add_user(user_id, username, first_name):
+    cursor.execute('''
+        INSERT OR IGNORE INTO users (user_id, username, first_name)
+        VALUES (?, ?, ?)
+    ''', (user_id, username, first_name))
+    conn.commit()
+    # Надсилаємо адміністратору повідомлення про додавання користувача
+    asyncio.create_task(bot.send_message(
+        ADMIN_USER_ID,
+        f"✅ Новий користувач доданий:\nID: {user_id}\nІм'я: {first_name}\nНікнейм: @{username if username else 'немає'}"
+    ))
+
+# Функція для видалення користувача з бази даних
+def remove_user(user_id):
+    cursor.execute('SELECT username, first_name FROM users WHERE user_id = ?', (user_id,))
+    user = cursor.fetchone()
+    cursor.execute('DELETE FROM users WHERE user_id = ?', (user_id,))
+    conn.commit()
+    # Надсилаємо адміністратору повідомлення про видалення користувача
+    if user:
+        username, first_name = user
+        asyncio.create_task(bot.send_message(
+            ADMIN_USER_ID,
+            f"❌ Користувач видалений:\nID: {user_id}\nІм'я: {first_name}\nНікнейм: @{username if username else 'немає'}"
+        ))
+
+# Функція для отримання всіх користувачів з бази даних
+def get_all_users():
+    cursor.execute('SELECT user_id, username, first_name FROM users')
+    return cursor.fetchall()
+
+# Функція для отримання випадкового зображення за темою
+def get_random_image(query="funny, kids, sunset, motivation"):
+    url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={query}&image_type=photo&per_page=50"
+    response = requests.get(url)
+    if response.status_code == 200:
+        data = response.json()
+        if data["hits"]:
+            return random.choice(data["hits"])["webformatURL"]
+    return None
+
+# Обробник команди /start
+@dp.message(Command("start"))
+async def start_handler(message: types.Message):
+    user_id = message.from_user.id
+    username = message.from_user.username
+    first_name = message.from_user.first_name
+
+    add_user(user_id, username, first_name)
+    await message.answer(f"Привіт, {first_name}! Ти додана у список розсилки.")
+    logging.info(f"✅ Користувач {user_id} ({username}) доданий у список розсилки.")
+
+# Обробник команди /sendnow для миттєвої розсилки
+@dp.message(Command("sendnow"))
+async def send_now_handler(message: types.Message):
+    await send_random_messages()
+
+# Обробник команди /get_users для отримання списку учасників
+@dp.message(Command("get_users"))
+async def get_users_handler(message: types.Message):
+    if message.from_user.id == ADMIN_USER_ID:  # Перевіряємо, чи це адміністратор
+        users = get_all_users()
+        if users:
+            user_list = "\n".join([f"ID: {user[0]}, Ім'я: {user[2]}, Нікнейм: @{user[1] if user[1] else 'немає'}" for user in users])
+            await message.answer(f"📋 Список учасників:\n{user_list}")
+        else:
+            await message.answer("❌ Список учасників порожній.")
+    else:
+        await message.answer("❌ У вас немає прав для виконання цієї команди.")
+
+# Функція для розсилки випадкових приємних повідомлень
+async def send_random_messages():
+    messages = [
         "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!", "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!",
         "Новий день – нові можливості! Лови їх!", "Ти сильніший, ніж думаєш. Усе вийде!",
         "Сьогодні твій день – зроби його крутим!", "Прокидайся! У світу для тебе є щось особливе!",
@@ -99,86 +195,54 @@ MESSAGES = [
         "Рухайся вперед, ти вже зробив перший крок!", "Ти готовий до великих досягнень!",
         "Ти здатний бути кращим версією себе!", "Ти маєш неймовірний потенціал!",
         "Твоя рішучість вражає!", "Ти надихаєш інших своєю силою волі!"
-]
+    ]
 
-# Глобальний пул з'єднань з PostgreSQL
-pool = None
-
-# Ініціалізація бази даних
-async def init_db():
-    global pool
-    pool = await asyncpg.create_pool(DATABASE_URL)
-    async with pool.acquire() as conn:
-        await conn.execute("""
-            CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY
-            )
-        """)
-
-# Додавання користувача в базу
-async def add_user(user_id: int):
-    async with pool.acquire() as conn:
-        await conn.execute("INSERT INTO users (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
-
-# Отримання списку користувачів
-async def get_users():
-    async with pool.acquire() as conn:
-        rows = await conn.fetch("SELECT user_id FROM users")
-        return [row["user_id"] for row in rows]
-
-# Отримання випадкового фото за темою
-async def get_random_photo():
-    topic = random.choice(TOPICS)
-    url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={topic}&image_type=photo&per_page=50"
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as response:
-            if response.status == 200:
-                data = await response.json()
-                if data.get("hits"):
-                    return random.choice(data["hits"])["webformatURL"]
-            return None
-
-# Надсилання унікальних повідомлень кожному користувачу
-async def send_unique_messages():
-    users = await get_users()
-    random.shuffle(MESSAGES)  # Перемішуємо список повідомлень
-    messages_pool = MESSAGES[:]  # Створюємо копію для унікальності
-
-    for user_id in users:
-        if not messages_pool:  # Якщо повідомлення закінчилися, перемішуємо знову
-            messages_pool = MESSAGES[:]
-            random.shuffle(messages_pool)
-
-        text = messages_pool.pop()  # Беремо унікальне повідомлення
-        photo_url = await get_random_photo()  # Отримуємо унікальне фото
-
+    for user_id, username, first_name in get_all_users():
         try:
-            if photo_url:
-                await bot.send_photo(chat_id=user_id, photo=photo_url, caption=text)
+            message = random.choice(messages)
+            image = get_random_image(query="motivation")  # Задайте тему, наприклад, "motivation"
+            if image:
+                await bot.send_photo(
+                    user_id,
+                    photo=image,
+                    caption=message,
+                    reply_markup=create_reaction_keyboard()  # Додаємо клавіатуру
+                )
+                logging.info(f"📨 Повідомлення з картинкою надіслано {user_id}")
             else:
-                await bot.send_message(chat_id=user_id, text=text)
+                logging.warning("⚠️ Не вдалося отримати зображення з Pixabay.")
         except Exception as e:
-            logging.error(f"Помилка надсилання для {user_id}: {e}")
+            logging.warning(f"⚠️ Не вдалося надіслати {user_id}: {e}")
 
-# Обробник команди /start
-@dp.message(Command("start"))
-async def start_handler(message: types.Message):
-    user_id = message.from_user.id
-    await add_user(user_id)
-    await message.answer("Ви підписалися на розсилку унікальних фото та повідомлень!")
+# Обробник натискань на кнопки
+@dp.callback_query()
+async def handle_reaction(callback_query: types.CallbackQuery):
+    data = callback_query.data  # Отримуємо callback_data
+    user_id = callback_query.from_user.id
 
-# Обробник команди /sendnow для миттєвої розсилки
-@dp.message(Command("sendnow"))
-async def sendnow_handler(message: types.Message):
-    await send_unique_messages()
+    if data == "reaction:like":
+        await callback_query.answer("❤️ Дякую за сердечко!")
+        logging.info(f"Користувач {user_id} натиснув 'Сердечко'.")
+    elif data == "reaction:new_photo":
+        # Відправляємо нове фото
+        new_image = get_random_image(query="motivation")
+        if new_image:
+            await bot.send_photo(
+                user_id,
+                photo=new_image,
+                caption="Ось нове фото для тебе!",
+                reply_markup=create_reaction_keyboard()
+            )
+        await callback_query.answer("🔄 Ось нове фото!")
+        logging.info(f"Користувач {user_id} запросив нове фото.")
 
-# Запуск планувальника (18:00)
-scheduler.add_job(send_unique_messages, CronTrigger(hour=18, minute=0, timezone=tz))
+# Планувальник для щоденних повідомлень (2 рази на день)
+scheduler = AsyncIOScheduler()
+scheduler.add_job(send_random_messages, CronTrigger(hour=18, minute=0, timezone=kyiv_tz))  # 18:00
 
-# Основна функція
+# Основна функція запуску бота
 async def main():
-    await init_db()
-    scheduler.start()
+    scheduler.start()  # Запускаємо планувальник
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
