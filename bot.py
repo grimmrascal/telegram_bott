@@ -26,6 +26,7 @@ PHOTO_CATEGORIES = ["cute animals", "beautiful landscapes"]  # Теми для �
 logging.basicConfig(level=logging.INFO)
 
 # Telegram бот
+BOT_TOKEN = "7748572068:AAF0FgWmUOZFxpSZBEcLs6jWKx_C7Fm5-iE"
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
