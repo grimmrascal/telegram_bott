@@ -1,137 +1,128 @@
+import os
+import random
 import asyncio
 import logging
-import random
-import asyncpg
-import aiohttp
+import requests
+import psycopg2
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import Message
+from aiogram.filters import Command
+from aiogram.utils.markdown import hbold
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from pytz import timezone
 from datetime import datetime
+from dotenv import load_dotenv
 
-# Конфігурація
-TOKEN = "YOUR_TELEGRAM_BOT_TOKEN"
-DATABASE_URL = "postgresql://user:password@host:port/dbname"
-PIXABAY_API_KEY = "YOUR_PIXABAY_API_KEY"
-PHOTO_CATEGORY = "cute"  # Можеш змінити тему фото
-CHAT_ID = "YOUR_CHAT_ID"  # ID групи або користувача
+# Завантажуємо змінні середовища
+load_dotenv()
+
+# Налаштування
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL")
+PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY")
+PHOTO_CATEGORIES = ["cute animals", "beautiful landscapes"]  # Теми для фото
 
 # Логування
 logging.basicConfig(level=logging.INFO)
 
-# Ініціалізація бота та диспетчера
-bot = Bot(token=TOKEN)
+# Telegram бот
+bot = Bot(token=TOKEN, parse_mode="HTML")
 dp = Dispatcher()
 
 # Часовий пояс
 kyiv_tz = timezone("Europe/Zaporozhye")
 
-# Список рандомних повідомлень
-messages = [
-    "Гарного дня! 🌞",
-    "Не забувай посміхатися! 😊",
-    "Сьогодні чудовий день для нових звершень!",
-    "Тримайся! Все буде добре!",
-    "Нехай удача буде з тобою! 🍀"
-]
+# Підключення до бази даних
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL, sslmode="require")
 
-# --------------- ФУНКЦІЇ ДЛЯ БАЗИ ДАНИХ ---------------
-
-async def init_db():
-    conn = await asyncpg.connect(DATABASE_URL)
-    
-    await conn.execute("""
+# Створення таблиці
+def create_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
-            user_id BIGINT UNIQUE NOT NULL,
+            user_id BIGINT UNIQUE,
             first_name TEXT,
             username TEXT
-        );
+        )
     """)
+    conn.commit()
+    cur.close()
+    conn.close()
 
-    columns = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
-    existing_columns = {row['column_name'] for row in columns}
-
-    if 'first_name' not in existing_columns:
-        await conn.execute("ALTER TABLE users ADD COLUMN first_name TEXT;")
-    if 'username' not in existing_columns:
-        await conn.execute("ALTER TABLE users ADD COLUMN username TEXT;")
-    
-    await conn.close()
-
+# Додавання користувача
 async def add_user(user_id, first_name, username):
-    conn = await asyncpg.connect(DATABASE_URL)
-    await conn.execute("""
-        INSERT INTO users (user_id, first_name, username)
-        VALUES ($1, $2, $3)
-        ON CONFLICT (user_id) DO UPDATE SET first_name = EXCLUDED.first_name, username = EXCLUDED.username;
-    """, user_id, first_name, username)
-    await conn.close()
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT INTO users (user_id, first_name, username) 
+        VALUES (%s, %s, %s) 
+        ON CONFLICT (user_id) DO NOTHING
+    """, (user_id, first_name, username))
+    conn.commit()
+    cur.close()
+    conn.close()
 
-async def get_all_users():
-    conn = await asyncpg.connect(DATABASE_URL)
-    users = await conn.fetch("SELECT user_id FROM users")
-    await conn.close()
-    return [user["user_id"] for user in users]
+# Отримання всіх користувачів
+def get_all_users():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT user_id FROM users")
+    users = [row[0] for row in cur.fetchall()]
+    cur.close()
+    conn.close()
+    return users
 
-# --------------- ФУНКЦІЇ ДЛЯ РОЗСИЛКИ ---------------
+# Отримання рандомного повідомлення
+def get_random_message():
+    messages = [
+        "Гарного дня!",
+        "Не забувайте усміхатись! 😊",
+        "Нехай удача буде на вашому боці!",
+        "Цінуйте кожен момент ❤️"
+    ]
+    return random.choice(messages)
 
-async def get_random_photo():
-    async with aiohttp.ClientSession() as session:
-        async with session.get(f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={PHOTO_CATEGORY}&image_type=photo&per_page=50") as response:
-            data = await response.json()
-            if "hits" in data and data["hits"]:
-                return random.choice(data["hits"])["webformatURL"]
-            return None
+# Отримання випадкового фото з Pixabay
+def get_random_photo():
+    category = random.choice(PHOTO_CATEGORIES)
+    url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={category}&image_type=photo&per_page=50"
+    response = requests.get(url).json()
+    if "hits" in response and response["hits"]:
+        return random.choice(response["hits"])["webformatURL"]
+    return None
 
+# Розсилка рандомних повідомлень та фото
 async def send_random_messages():
-    users = await get_all_users()
-    random.shuffle(users)  # Щоб кожен отримував різні повідомлення
-    
-    for i, user_id in enumerate(users):
-        text = messages[i % len(messages)]  # Беремо унікальне повідомлення для кожного
-        photo_url = await get_random_photo()
-        
+    users = get_all_users()
+    for user_id in users:
+        message = get_random_message()
+        photo_url = get_random_photo()
         if photo_url:
-            try:
-                await bot.send_photo(user_id, photo_url, caption=text)
-            except Exception as e:
-                logging.error(f"Помилка відправки {user_id}: {e}")
+            await bot.send_photo(user_id, photo_url, caption=message)
         else:
-            try:
-                await bot.send_message(user_id, text)
-            except Exception as e:
-                logging.error(f"Помилка відправки {user_id}: {e}")
+            await bot.send_message(user_id, message)
 
-# --------------- ОБРОБНИКИ КОМАНД ---------------
+# Обробник команди /start
+@dp.message(Command("start"))
+async def start_handler(message: types.Message):
+    await add_user(message.from_user.id, message.from_user.first_name, message.from_user.username)
+    await message.answer(f"Привіт, {hbold(message.from_user.first_name)}! Я буду надсилати тобі цікаві повідомлення та фото.")
 
-@dp.message(commands=["start"])
-async def start_handler(message: Message):
-    user_id = message.from_user.id
-    first_name = message.from_user.first_name
-    username = message.from_user.username
-    
-    await add_user(user_id, first_name, username)
-    await message.answer("Вітаю! Ви підписалися на розсилку!")
-
-@dp.message(commands=["sendnow"])
-async def send_now_handler(message: Message):
+# Обробник команди /sendnow
+@dp.message(Command("sendnow"))
+async def send_now_handler(message: types.Message):
     await send_random_messages()
 
-# --------------- НАЛАШТУВАННЯ ПЛАНУВАЛЬНИКА ---------------
-
+# Планувальник задач
 scheduler = AsyncIOScheduler()
-
-# Додаємо розсилку о 18:00 і 20:00
-scheduler.add_job(send_random_messages, "cron", hour=18, minute=0, timezone=kyiv_tz)
-scheduler.add_job(send_random_messages, "cron", hour=20, minute=0, timezone=kyiv_tz)
-
+scheduler.add_job(send_random_messages, "cron", hour=18, timezone=kyiv_tz)  # Запланована розсилка о 18:00
 scheduler.start()
 
-# --------------- ЗАПУСК БОТА ---------------
-
+# Запуск бота
 async def main():
-    await init_db()
+    create_table()  # Створення таблиці при старті
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
