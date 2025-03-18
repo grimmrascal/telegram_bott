@@ -116,6 +116,15 @@ async def init_db():
                 username TEXT
             )
         """)
+        columns = await conn.fetch("SELECT column_name FROM information_schema.columns WHERE table_name='users'")
+        existing_columns = {row['column_name'] for row in columns}
+
+        if 'first_name' not in existing_columns:
+        await conn.execute("ALTER TABLE users ADD COLUMN first_name TEXT;")
+        if 'username' not in existing_columns:
+        await conn.execute("ALTER TABLE users ADD COLUMN username TEXT;")
+    
+        await conn.close()
 
 # Додавання користувача в базу
 async def add_user(user_id: int, first_name: str, username: str):
