@@ -4,6 +4,7 @@ import asyncio
 import logging
 import requests
 import psycopg2
+from aiogram.client.default import DefaultBotProperties
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.utils.markdown import hbold
@@ -25,7 +26,7 @@ PHOTO_CATEGORIES = ["cute animals", "beautiful landscapes"]  # Теми для �
 logging.basicConfig(level=logging.INFO)
 
 # Telegram бот
-bot = Bot(token=TOKEN, parse_mode="HTML")
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
 # Часовий пояс
