@@ -33,7 +33,7 @@ dp = Dispatcher()
 kyiv_tz = timezone("Europe/Kyiv")
 
 # Список Telegram user_id для отримання повідомлень від бота
-ADMIN_USER_IDS = [471637263, 5142786008]  # Замініть на список реальних user_id
+ADMIN_USER_IDS = [471637263, 5142786008,  646146668]  # Замініть на список реальних user_id
 
 # Підключення до бази даних
 conn = sqlite3.connect('users.db')
