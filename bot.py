@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Налаштування
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 PIXABAY_API_KEY = os.getenv("PIXABAY_API_KEY")
 PHOTO_CATEGORIES = ["cute animals", "beautiful landscapes"]  # Теми для фото
