@@ -28,15 +28,15 @@ bot = Bot(token=TOKEN)
 dp = Dispatcher()
 scheduler = AsyncIOScheduler()
 
-# Часова зона (наприклад, Europe/Zaporozhye)
+# Часова зона
 tz = timezone("Europe/Zaporozhye")
 
 # Тематичні ключові слова для фото
-TOPICS = ["cute", "kids", "nature", "flowers", "sunset", "beach", "mountains"]
+TOPICS = ["kids", "nature", "flowers", "sunset", "beach", "mountains"]
 
-# Список унікальних повідомлень
+# Унікальні повідомлення
 MESSAGES = [
-        "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!", "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!",
+            "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!", "Ти чудовий!", "Не забувай посміхатися!", "В тебе все вийде!", "Ти особливий!",
         "Новий день – нові можливості! Лови їх!", "Ти сильніший, ніж думаєш. Усе вийде!",
         "Сьогодні твій день – зроби його крутим!", "Прокидайся! У світу для тебе є щось особливе!",
         "Сонце вже світить для тебе – час підкорювати світ!", "Зроби сьогодні те, про що завтра подякуєш собі!",
@@ -111,14 +111,24 @@ async def init_db():
     async with pool.acquire() as conn:
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
-                user_id BIGINT PRIMARY KEY
+                user_id BIGINT PRIMARY KEY,
+                first_name TEXT,
+                username TEXT
             )
         """)
 
 # Додавання користувача в базу
-async def add_user(user_id: int):
+async def add_user(user_id: int, first_name: str, username: str):
     async with pool.acquire() as conn:
-        await conn.execute("INSERT INTO users (user_id) VALUES ($1) ON CONFLICT DO NOTHING", user_id)
+        await conn.execute(
+            """
+            INSERT INTO users (user_id, first_name, username) 
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id) DO UPDATE 
+            SET first_name = EXCLUDED.first_name, username = EXCLUDED.username
+            """,
+            user_id, first_name, username
+        )
 
 # Отримання списку користувачів
 async def get_users():
@@ -142,15 +152,15 @@ async def get_random_photo():
 async def send_unique_messages():
     users = await get_users()
     random.shuffle(MESSAGES)  # Перемішуємо список повідомлень
-    messages_pool = MESSAGES[:]  # Створюємо копію для унікальності
+    messages_pool = MESSAGES[:]  # Створюємо копію
 
     for user_id in users:
-        if not messages_pool:  # Якщо повідомлення закінчилися, перемішуємо знову
+        if not messages_pool:
             messages_pool = MESSAGES[:]
             random.shuffle(messages_pool)
 
-        text = messages_pool.pop()  # Беремо унікальне повідомлення
-        photo_url = await get_random_photo()  # Отримуємо унікальне фото
+        text = messages_pool.pop()
+        photo_url = await get_random_photo()
 
         try:
             if photo_url:
@@ -164,7 +174,10 @@ async def send_unique_messages():
 @dp.message(Command("start"))
 async def start_handler(message: types.Message):
     user_id = message.from_user.id
-    await add_user(user_id)
+    first_name = message.from_user.first_name
+    username = message.from_user.username if message.from_user.username else "—"
+
+    await add_user(user_id, first_name, username)
     await message.answer("Ви підписалися на розсилку унікальних фото та повідомлень!")
 
 # Обробник команди /sendnow для миттєвої розсилки
@@ -172,7 +185,7 @@ async def start_handler(message: types.Message):
 async def sendnow_handler(message: types.Message):
     await send_unique_messages()
 
-# Запуск планувальника (18:00)
+# Запуск планувальника
 scheduler.add_job(send_unique_messages, CronTrigger(hour=18, minute=0, timezone=tz))
 
 # Основна функція
