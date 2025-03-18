@@ -166,8 +166,6 @@ async def sendnow_handler(message: types.Message):
     await send_random_content()
 
 # Запуск планувальника для розсилки контенту (наприклад, о 10:00, 14:00 та 18:00)
-scheduler.add_job(send_random_content, CronTrigger(hour=10, minute=0, timezone=tz))
-scheduler.add_job(send_random_content, CronTrigger(hour=14, minute=0, timezone=tz))
 scheduler.add_job(send_random_content, CronTrigger(hour=18, minute=0, timezone=tz))
 
 # Основна функція запуску бота
