@@ -71,6 +71,31 @@ def add_user(user_id, username, first_name):
         f"✅ Новий користувач доданий:\nID: {user_id}\nІм'я: {first_name}\nНікнейм: @{username if username else 'немає'}"
     ))
 
+# Обробник команди /add_user для ручного додавання користувача
+@dp.message(Command("add_user"))
+async def add_user_handler(message: types.Message):
+    if message.from_user.id == ADMIN_USER_ID:  # Перевіряємо, чи це адміністратор
+        try:
+            # Розділяємо текст команди на параметри
+            command_parts = message.text.split(maxsplit=3)
+            if len(command_parts) < 4:
+                await message.answer("❌ Неправильний формат. Використовуйте: /add_user <user_id> <username> <first_name>")
+                return
+
+            user_id = int(command_parts[1])
+            username = command_parts[2]
+            first_name = command_parts[3]
+
+            # Додаємо користувача до бази даних
+            add_user(user_id, username, first_name)
+            await message.answer(f"✅ Користувач доданий:\nID: {user_id}\nІм'я: {first_name}\nНікнейм: @{username}")
+        except ValueError:
+            await message.answer("❌ Неправильний формат. user_id має бути числом.")
+        except Exception as e:
+            await message.answer(f"❌ Помилка при додаванні користувача: {e}")
+    else:
+        await message.answer("❌ У вас немає прав для виконання цієї команди.")
+
 # Функція для видалення користувача з бази даних
 def remove_user(user_id):
     cursor.execute('SELECT username, first_name FROM users WHERE user_id = ?', (user_id,))
