@@ -8,6 +8,7 @@ from psycopg2.extras import RealDictCursor
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram import Router
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from pytz import timezone
@@ -32,6 +33,10 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 # Ініціалізація бота і диспетчера
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+
+# Ініціалізація Router
+router = Router()
+dp.include_router(router)
 
 # Часовий пояс Києва
 kyiv_tz = timezone("Europe/Kyiv")
@@ -75,6 +80,7 @@ def add_user(user_id, username, first_name):
         conn.commit()
         logging.info(f"Користувач {user_id} доданий до бази даних.")
     except Exception as e:
+        conn.rollback()  # Скасовуємо транзакцію у разі помилки
         logging.error(f"Помилка при додаванні користувача {user_id}: {e}")
 
 # Функція для видалення користувача з бази даних
@@ -84,12 +90,18 @@ def remove_user(user_id):
         conn.commit()
         logging.info(f"Користувач {user_id} видалений із бази даних.")
     except Exception as e:
+        conn.rollback()  # Скасовуємо транзакцію у разі помилки
         logging.error(f"Помилка при видаленні користувача {user_id}: {e}")
 
 # Функція для отримання всіх користувачів з бази даних
 def get_all_users():
-    cursor.execute('SELECT user_id, username, first_name FROM users')
-    return cursor.fetchall()
+    try:
+        cursor.execute('SELECT user_id, username, first_name FROM users')
+        return cursor.fetchall()
+    except Exception as e:
+        conn.rollback()  # Скасовуємо транзакцію у разі помилки
+        logging.error(f"Помилка при отриманні списку користувачів: {e}")
+        return []
 
 # Функція для отримання випадкового зображення за темою
 def get_random_image(query="funny, kids, sunset, motivation"):
@@ -120,6 +132,65 @@ async def send_now_handler(message: types.Message):
     else:
         await message.answer("❌ У вас немає прав для виконання цієї команди.")
 
+# Обробник команди /t для розсилки тексту або фото всім користувачам, крім відправника
+@dp.message(Command("t"))
+async def broadcast_handler(message: types.Message):
+    if message.from_user.id in ADMIN_USER_IDS:  # Перевіряємо, чи це адміністратор
+        try:
+            # Отримуємо список усіх користувачів
+            users = get_all_users()
+
+            if not users:
+                await message.answer("❌ Немає користувачів для розсилки.")
+                return
+
+            # Перевіряємо, чи є фото в повідомленні
+            if message.photo:
+                caption = message.caption  # Отримуємо текст підпису, якщо він є
+                photo_id = message.photo[-1].file_id  # Використовуємо останню (найкращу) версію фото
+
+                # Розсилаємо фото кожному користувачу, крім відправника
+                for user in users:
+                    if user['user_id'] == message.from_user.id:
+                        continue  # Пропускаємо відправника
+
+                    try:
+                        await bot.send_photo(
+                            chat_id=user['user_id'],
+                            photo=photo_id,
+                            caption=caption  # Додаємо підпис, якщо він є
+                        )
+                        logging.info(f"📨 Фото надіслано користувачу {user['user_id']}")
+                    except Exception as e:
+                        logging.warning(f"⚠️ Не вдалося надіслати фото користувачу {user['user_id']}: {e}")
+
+                await message.answer("✅ Фото успішно розіслано всім користувачам!")
+            else:
+                # Якщо фото немає, розсилаємо текстове повідомлення
+                command_parts = message.text.split(maxsplit=1)
+                if len(command_parts) < 2:
+                    await message.answer("❌ Неправильний формат. Використовуйте: /t <текст повідомлення> або надішліть фото.")
+                    return
+
+                broadcast_message = command_parts[1]  # Текст повідомлення
+
+                # Розсилаємо текст кожному користувачу, крім відправника
+                for user in users:
+                    if user['user_id'] == message.from_user.id:
+                        continue  # Пропускаємо відправника
+
+                    try:
+                        await bot.send_message(user['user_id'], broadcast_message)
+                        logging.info(f"📨 Повідомлення надіслано користувачу {user['user_id']}")
+                    except Exception as e:
+                        logging.warning(f"⚠️ Не вдалося надіслати повідомлення користувачу {user['user_id']}: {e}")
+
+                await message.answer("✅ Повідомлення успішно розіслано всім користувачам!")
+        except Exception as e:
+            await message.answer(f"❌ Помилка при розсилці: {e}")
+    else:
+        await message.answer("❌ У вас немає прав для виконання цієї команди.")
+
 # Обробник команди /get_users для отримання списку учасників
 @dp.message(Command("get_users"))
 async def get_users_handler(message: types.Message):
@@ -138,15 +209,32 @@ async def get_users_handler(message: types.Message):
 async def add_user_handler(message: types.Message):
     if message.from_user.id in ADMIN_USER_IDS:  # Перевіряємо, чи це адміністратор
         try:
-            command_parts = message.text.split(maxsplit=3)
-            if len(command_parts) < 4:
-                await message.answer("❌ Неправильний формат. Використовуйте: /add_user <user_id> <username> <first_name>")
+            # Розділяємо текст команди на частини
+            command_parts = message.text.split(maxsplit=1)
+            if len(command_parts) < 2:
+                await message.answer("❌ Неправильний формат. Використовуйте: /add_user <user_id>")
                 return
 
+            # Отримуємо user_id
             user_id = int(command_parts[1])
-            username = command_parts[2]
-            first_name = command_parts[3]
 
+            # Перевіряємо, чи користувач вже існує
+            cursor.execute('SELECT * FROM users WHERE user_id = %s', (user_id,))
+            existing_user = cursor.fetchone()
+            if existing_user:
+                await message.answer(f"❌ Користувач із ID {user_id} вже існує в базі даних.")
+                return
+
+            # Отримуємо інформацію про користувача через Telegram API
+            try:
+                user = await bot.get_chat(user_id)
+                username = user.username if user.username else "немає"
+                first_name = user.first_name if user.first_name else "немає"
+            except Exception as e:
+                await message.answer(f"❌ Не вдалося отримати інформацію про користувача з ID {user_id}: {e}")
+                return
+
+            # Додаємо користувача до бази даних
             add_user(user_id, username, first_name)
             await message.answer(f"✅ Користувач доданий:\nID: {user_id}\nІм'я: {first_name}\nНікнейм: @{username}")
         except ValueError:
@@ -161,12 +249,23 @@ async def add_user_handler(message: types.Message):
 async def remove_user_handler(message: types.Message):
     if message.from_user.id in ADMIN_USER_IDS:  # Перевіряємо, чи це адміністратор
         try:
+            # Розділяємо текст команди на частини
             command_parts = message.text.split(maxsplit=1)
             if len(command_parts) < 2:
                 await message.answer("❌ Неправильний формат. Використовуйте: /remove_user <user_id>")
                 return
 
+            # Отримуємо user_id
             user_id = int(command_parts[1])
+
+            # Перевіряємо, чи користувач існує
+            cursor.execute('SELECT * FROM users WHERE user_id = %s', (user_id,))
+            existing_user = cursor.fetchone()
+            if not existing_user:
+                await message.answer(f"❌ Користувача з ID {user_id} не знайдено в базі даних.")
+                return
+
+            # Видаляємо користувача
             remove_user(user_id)
             await message.answer(f"✅ Користувач із ID {user_id} успішно видалений.")
         except ValueError:
@@ -175,6 +274,27 @@ async def remove_user_handler(message: types.Message):
             await message.answer(f"❌ Помилка при видаленні користувача: {e}")
     else:
         await message.answer("❌ У вас немає прав для виконання цієї команди.")
+
+@router.callback_query(lambda callback: callback.data.startswith("reaction:"))
+async def reaction_handler(callback: types.CallbackQuery):
+    if callback.data == "reaction:like":
+        await callback.answer("❤️ Дякую за твою реакцію!")
+        logging.info(f"Користувач {callback.from_user.id} натиснув ❤️")
+    elif callback.data == "reaction:new_photo":
+        await callback.answer("🔄 Завантажую нове фото...")
+        logging.info(f"Користувач {callback.from_user.id} запросив нове фото")
+
+        # Завантажуємо нове фото
+        image = get_random_image(query="motivation")
+        if image:
+            await bot.send_photo(
+                callback.from_user.id,
+                photo=image,
+                caption="Ось нове фото для вас!",
+                reply_markup=create_reaction_keyboard()
+            )
+        else:
+            await callback.message.answer("⚠️ Не вдалося отримати нове фото.")
 
 # Функція для розсилки випадкових приємних повідомлень
 async def send_random_messages():
