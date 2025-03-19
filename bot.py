@@ -135,61 +135,59 @@ async def send_now_handler(message: types.Message):
 # Обробник команди /t для розсилки тексту або фото всім користувачам, крім відправника
 @dp.message(Command("t"))
 async def broadcast_handler(message: types.Message):
-    if message.from_user.id in ADMIN_USER_IDS:  # Перевіряємо, чи це адміністратор
-        try:
-            # Отримуємо список усіх користувачів
-            users = get_all_users()
-
-            if not users:
-                await message.answer("❌ Немає користувачів для розсилки.")
-                return
-
-            # Перевіряємо, чи є фото в повідомленні
-            if message.photo:
-                caption = message.caption  # Отримуємо текст підпису, якщо він є
-                photo_id = message.photo[-1].file_id  # Використовуємо останню (найкращу) версію фото
-
-                # Розсилаємо фото кожному користувачу, крім відправника
-                for user in users:
-                    if user['user_id'] == message.from_user.id:
-                        continue  # Пропускаємо відправника
-
-                    try:
-                        await bot.send_photo(
-                            chat_id=user['user_id'],
-                            photo=photo_id,
-                            caption=caption  # Додаємо підпис, якщо він є
-                        )
-                        logging.info(f"📨 Фото надіслано користувачу {user['user_id']}")
-                    except Exception as e:
-                        logging.warning(f"⚠️ Не вдалося надіслати фото користувачу {user['user_id']}: {e}")
-
-                await message.answer("✅ Фото успішно розіслано всім користувачам!")
-            else:
-                # Якщо фото немає, розсилаємо текстове повідомлення
-                command_parts = message.text.split(maxsplit=1)
-                if len(command_parts) < 2:
-                    await message.answer("❌ Неправильний формат. Використовуйте: /t <текст повідомлення> або надішліть фото.")
-                    return
-
-                broadcast_message = command_parts[1]  # Текст повідомлення без команди
-
-                # Розсилаємо текст кожному користувачу, крім відправника
-                for user in users:
-                    if user['user_id'] == message.from_user.id:
-                        continue  # Пропускаємо відправника
-
-                    try:
-                        await bot.send_message(user['user_id'], broadcast_message)
-                        logging.info(f"📨 Повідомлення надіслано користувачу {user['user_id']}")
-                    except Exception as e:
-                        logging.warning(f"⚠️ Не вдалося надіслати повідомлення користувачу {user['user_id']}: {e}")
-
-                await message.answer("✅ Повідомлення успішно розіслано всім користувачам!")
-        except Exception as e:
-            await message.answer(f"❌ Помилка при розсилці: {e}")
-    else:
+    if message.from_user.id not in ADMIN_USER_IDS:
         await message.answer("❌ У вас немає прав для виконання цієї команди.")
+        return
+
+    try:
+        users = get_all_users()
+
+        if not users:
+            await message.answer("❌ Немає користувачів для розсилки.")
+            return
+
+        # **Обробка фото**
+        if message.photo:
+            photo_id = message.photo[-1].file_id  # Отримуємо фото у найкращій якості
+            
+            # Видаляємо текст команди `/t` з підпису, якщо він є
+            caption = message.caption if message.caption else ""
+            caption = caption.replace("/t", "").strip()  # Видаляємо команду та зайві пробіли
+
+            for user in users:
+                if user['user_id'] == message.from_user.id:
+                    continue  # Пропускаємо відправника
+
+                try:
+                    await bot.send_photo(chat_id=user['user_id'], photo=photo_id, caption=caption or None)
+                    logging.info(f"📨 Фото надіслано користувачу {user['user_id']}")
+                except Exception as e:
+                    logging.warning(f"⚠️ Не вдалося надіслати фото користувачу {user['user_id']}: {e}")
+
+            await message.answer("✅ Фото успішно розіслано всім користувачам!")
+            return  # ВАЖЛИВО! ВИХОДИМО З ФУНКЦІЇ, ЩОБ НЕ ОБРОБЛЯТИ ТЕКСТ
+
+        # **Обробка тексту (якщо фото немає)**
+        text_content = message.text[len("/t"):].strip()  # Видаляємо "/t" і зайві пробіли
+
+        if not text_content:
+            await message.answer("❌ Ви не написали текст для розсилки!")
+            return
+
+        for user in users:
+            if user['user_id'] == message.from_user.id:
+                continue  # Пропускаємо відправника
+
+            try:
+                await bot.send_message(user['user_id'], text_content)
+                logging.info(f"📨 Повідомлення надіслано користувачу {user['user_id']}")
+            except Exception as e:
+                logging.warning(f"⚠️ Не вдалося надіслати повідомлення користувачу {user['user_id']}: {e}")
+
+        await message.answer("✅ Повідомлення успішно розіслано всім користувачам!")
+
+    except Exception as e:
+        await message.answer(f"❌ Помилка при розсилці: {e}")
 
 # Обробник команди /get_users для отримання списку учасників
 @dp.message(Command("get_users"))
