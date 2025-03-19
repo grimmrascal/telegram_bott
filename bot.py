@@ -33,10 +33,10 @@ dp = Dispatcher()
 kyiv_tz = timezone("Europe/Kyiv")
 
 # Список Telegram user_id для отримання повідомлень від бота
-ADMIN_USER_IDS = [471637263, 5142786008,  646146668]  # Замініть на список реальних user_id
+ADMIN_USER_IDS = [471637263, 5142786008, 646146668]  # Замініть на список реальних user_id
 
 # Підключення до бази даних
-conn = sqlite3.connect('users.db')
+conn = sqlite3.connect('users.db') 
 cursor = conn.cursor()
 
 # Створення таблиці користувачів
@@ -65,6 +65,7 @@ def add_user(user_id, username, first_name):
         VALUES (?, ?, ?)
     ''', (user_id, username, first_name))
     conn.commit()
+    logging.info(f"Користувач {user_id} доданий до бази даних.")
     # Надсилаємо адміністраторам повідомлення про додавання користувача
     for admin_id in ADMIN_USER_IDS:
         asyncio.create_task(bot.send_message(
@@ -93,7 +94,7 @@ def get_all_users():
     return cursor.fetchall()
 
 # Функція для отримання випадкового зображення за темою
-def get_random_image(query="funny, kids, sunset, motivation, mountains, forests, cute"):
+def get_random_image(query="funny, kids, sunset, motivation"):
     url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={query}&image_type=photo&per_page=50"
     response = requests.get(url)
     if response.status_code == 200:
