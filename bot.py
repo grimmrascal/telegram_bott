@@ -105,7 +105,7 @@ def get_all_users():
         return []
 
 # Функція для отримання випадкового зображення за темою
-def get_random_image(query="kids, sunset, flowers"):
+def get_random_image(query="mountains, sunset, flowers, love"):
     url = f"https://pixabay.com/api/?key={PIXABAY_API_KEY}&q={query}&image_type=photo&per_page=50"
     response = requests.get(url)
     if response.status_code == 200:
@@ -310,7 +310,7 @@ async def reaction_handler(callback: types.CallbackQuery):
         logging.info(f"Користувач {callback.from_user.id} запросив нове фото")
 
         # Завантажуємо нове фото
-        image = get_random_image(query="kids, sunset, flowers")
+        image = get_random_image(query="mountains, sunset, flowers, love")
         if image:
             await bot.send_photo(
                 callback.from_user.id,
